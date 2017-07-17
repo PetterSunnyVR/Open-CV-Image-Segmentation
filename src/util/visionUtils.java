@@ -30,7 +30,7 @@ import javafx.scene.paint.ImagePattern;
 public class visionUtils {
 	
 	static{
-		new LibraryLoader();
+		//new LibraryLoader();
 		System.loadLibrary(Core.NATIVE_LIBRARY_NAME);
 		}
 	
@@ -45,7 +45,8 @@ public class visionUtils {
 	public void readImage() {
 		
 		//OPEN IMAGE
-		originalImg = Imgcodecs.imread("D:\\workspace\\OCVImageSegmentation\\res\\sudoku.jpg");
+		//originalImg = Imgcodecs.imread("D:\\workspace\\OCVImageSegmentation\\res\\sudoku.jpg");
+		originalImg = Imgcodecs.imread("E:\\JAVA Projects\\OpenCv\\OCVImageSegmentation\\res\\sudoku.jpg");
 		//COPY AS A GRAYSCALE IMAGE FOR FURHTER PROCESSING
 		Mat gray = new Mat();
 		if(originalImg.empty()) {
@@ -58,13 +59,16 @@ public class visionUtils {
 			}
 			//CONTOURS
 			//contoursSegmentation(gray);
-			biggestContourSegmentation(gray);
+			//test(gray);
+			List<MatOfPoint> biggestContour = biggestContourSegmentation(gray);
+			findLines(biggestContour);
 		}
 		
 		
 
 	}
 	
+	//FIND ALL CONTOURS
 	public void contoursSegmentation(Mat img) {
 		Mat edges = new Mat();
 		//CANNY REDUCES A LOT OF NOISE SO FINDCONTOURS WILL BE MORE EFFECTIVE 
@@ -83,11 +87,12 @@ public class visionUtils {
 		Imgcodecs.imwrite("E:\\gaussian3.jpg", originalImg);
 	}
 	
-	public void biggestContourSegmentation(Mat img){
+	//FIND BIGGEST CONTOUR
+	public List<MatOfPoint> biggestContourSegmentation(Mat img){
 		Mat edges = new Mat();
 		//CANNY REDUCES A LOT OF NOISE SO FINDCONTOURS WILL BE MORE EFFECTIVE 
 		Imgproc.Canny(img, edges, 30, 200);
-		unskewImage(edges);
+		//unskewImage(edges);
 		//FINDCONTOURS
 		List<MatOfPoint> contours = new ArrayList<>();
 		Mat hierarch = new Mat();
@@ -115,6 +120,10 @@ public class visionUtils {
 		System.out.println("DONE");
 		//Imgcodecs.imwrite("E:\\gaussian3.jpg", originalImg);
 		Imgcodecs.imwrite("E:\\gaussian3.jpg", cropContour(contours.get(maxIndex), originalImg));
+		List<MatOfPoint> bigContour = new ArrayList<>();
+		bigContour.add(contours.get(maxIndex));
+		
+		return bigContour;
 	}
 	
 	//PERSPECTIVE TRANSFORMATION - finding points
@@ -150,7 +159,86 @@ public class visionUtils {
 		    Imgproc.line(copyImage, pt1, pt2, new Scalar(0,255,0), 3);
 		    
 		}
-		Imgcodecs.imwrite("E:\\gaussian2.jpg", copyImage);
+		
+	}
+	
+	//HOUGH LINES
+	public void findLines(List<MatOfPoint> contour) {
+		Mat black = new Mat().zeros(originalImg.size(), originalImg.type());
+		Imgproc.drawContours(black, contour, -1, new Scalar(0,255,0));
+		Imgproc.cvtColor(black, black, Imgproc.COLOR_BGR2GRAY);
+		Imgproc.GaussianBlur(black, black, new Size(11,11), 0);
+		Imgproc.threshold(black, black, 0, 255, Imgproc.THRESH_BINARY);
+		//Imgproc.adaptiveThreshold(black, black, 255, Imgproc.ADAPTIVE_THRESH_MEAN_C, Imgproc.THRESH_BINARY_INV, 5, 2);
+		Mat lines =  new Mat();
+		
+		//detecting lines
+		Imgproc.HoughLines(black, lines, 1, Math.PI/180, 310);
+		System.out.println(lines.dump());
+		
+		 double[] data;
+         double rho, theta;
+         Point pt1 = new Point();
+         Point pt2 = new Point();
+         double a, b;
+         double x0, y0;
+         for (int i = 0; i < lines.rows(); i++)
+         {
+             data = lines.get(i, 0);
+             rho = data[0];
+             theta = data[1];
+             a = Math.cos(theta);
+             b = Math.sin(theta);
+             x0 = a*rho;
+             y0 = b*rho;
+             pt1.x = Math.round(x0 + 1000*(-b));
+             pt1.y = Math.round(y0 + 1000*a);
+             pt2.x = Math.round(x0 - 1000*(-b));
+             pt2.y = Math.round(y0 - 1000 *a);
+             Imgproc.line(originalImg, pt1, pt2, new Scalar(0,255,0), 3);
+         }
+		
+		Imgcodecs.imwrite("K:\\gaussian2.jpg", originalImg);
+	}
+
+	//HOUGH LINES TEST - OK
+	public void test(Mat img) {
+		Mat edges = new Mat();
+		//CANNY REDUCES A LOT OF NOISE SO FINDCONTOURS WILL BE MORE EFFECTIVE 
+		Imgproc.Canny(img, edges, 80, 100);
+
+        //Imgproc.cvtColor(edges, edges, Imgproc.COLOR_GRAY2BGRA, 4);
+		
+        Mat lines = new Mat();
+        Imgproc.HoughLines(edges, lines, 1, Math.PI/180, 240);
+        
+        System.out.println(lines.get(1,0)[1]);
+        
+        System.out.println(lines.dump());
+		 double[] data;
+		 double rho, theta;
+		 Point pt1 = new Point();
+		 Point pt2 = new Point();
+		 double a, b;
+		 double x0, y0;
+		 for (int i = 0; i < lines.rows(); i++)
+		 {
+		     data = lines.get(i, 0);
+		     rho = data[0];
+		     theta = data[1];
+		     a = Math.cos(theta);
+		     b = Math.sin(theta);
+		     x0 = a*rho;
+		     y0 = b*rho;
+		     pt1.x = Math.round(x0 + 1000*(-b));
+		     pt1.y = Math.round(y0 + 1000*a);
+		     pt2.x = Math.round(x0 - 1000*(-b));
+		     pt2.y = Math.round(y0 - 1000 *a);
+		     Imgproc.line(originalImg, pt1, pt2, new Scalar(0,255,0), 3);
+		 }
+		
+		 Imgcodecs.imwrite("K:\\gaussian2.jpg", originalImg);
+        
 	}
 	
 	//sudoku contour - first we would need to unskiew the image
@@ -176,6 +264,7 @@ public class visionUtils {
 		
 		Imgproc.drawContours(originalImg, contours, -1, new Scalar(0,255,0),3);
 		System.out.println("DONE");
+		
 		Imgcodecs.imwrite("E:\\gaussian3.jpg", originalImg);
 	}
 	
@@ -186,7 +275,7 @@ public class visionUtils {
 	}
 	
 	//sorts downwards
-	public void sortingContours(List<MatOfPoint> contours){
+	public List<MatOfPoint> sortingContours(List<MatOfPoint> contours){
 		List<MatOfPoint> sortedList = new ArrayList<>();
 		double maxArea = -1;
 		double currentArea = -1;
@@ -216,9 +305,7 @@ public class visionUtils {
 			count++;
 		}
 		
-		for (int i = 0; i < sortedList.size(); i++) {
-			System.out.println(Imgproc.contourArea(sortedList.get(i)));
-		}
+		return sortedList;
 	}
 
 	
