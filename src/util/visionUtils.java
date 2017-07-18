@@ -251,31 +251,38 @@ public class visionUtils {
 	public void detectNumbers(Mat img){
 		int boxWidth = img.width()/9;
 		int boxHeight = img.height()/9;
-		Point pt1, pt2;
+		int index = 0;
+		Point pt1 = new Point(), pt2 = new Point();
 		for (int i = 0; i < 9; i++) {
 			for (int j = 0; j < 9; j++) {
 				if(i!=8){
 					if(j!=8){
 						pt1 = new Point(j*boxWidth,i*boxHeight);
 						pt2 = new Point(j*boxWidth+boxWidth,i*boxHeight+boxHeight);
-						Imgproc.rectangle(img, pt1, pt2, new Scalar(0,255,0));
 					}else{
 						pt1 = new Point(j*boxWidth,i*boxHeight);
 						pt2 = new Point(j*boxWidth+((img.width()-1) - j*boxWidth),i*boxHeight+boxHeight);
-						Imgproc.rectangle(img, pt1, pt2, new Scalar(0,255,0));
 					}
 				}else{
 					if(j!=8){
 						pt1 = new Point(j*boxWidth,i*boxHeight);
 						pt2 = new Point(j*boxWidth+boxWidth,i*boxHeight+((img.height()-1) - i*boxHeight));
-						Imgproc.rectangle(img, pt1, pt2, new Scalar(0,255,0));
 					}else{
 						pt1 = new Point(j*boxWidth,i*boxHeight);
 						pt2 = new Point(j*boxWidth+((img.width()-1) - j*boxWidth),i*boxHeight+((img.height()-1) - i*boxHeight));
-						Imgproc.rectangle(img, pt1, pt2, new Scalar(0,255,0));
 					}
 				}
-
+				//Imgcodecs.imwrite("E:\\sudokuSubMat\\box"+index+".jpg", img.submat(new Rect(pt1,pt2)));
+				try {
+					Thread.sleep(10);
+				} catch (InterruptedException e) {
+					// TODO Auto-generated catch block
+					e.printStackTrace();
+				}
+				Imgproc.rectangle(img, pt1, pt2, new Scalar(0,255,0));
+				Imgproc.putText(img, index+"", new Point(pt1.x+boxWidth/2,pt1.y+boxHeight/2), Core.FONT_HERSHEY_SIMPLEX, 0.5, new Scalar(0,255,0));
+				index++;
+				//Imgcodecs.imwrite("E:\\sudokuSubMat\\box"+index+".jpg", img.submat(new Rect(pt1,pt2)));
 			}
 			
 		}
