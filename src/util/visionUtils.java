@@ -11,16 +11,19 @@ import java.util.Map;
 import java.util.SortedMap;
 import java.util.TreeMap;
 
+import org.omg.CORBA.portable.BoxedValueHelper;
 import org.opencv.core.Core;
 import org.opencv.core.CvType;
 import org.opencv.core.Mat;
 import org.opencv.core.MatOfPoint;
+import org.opencv.core.MatOfPoint2f;
 import org.opencv.core.Point;
 import org.opencv.core.Rect;
 import org.opencv.core.Scalar;
 import org.opencv.core.Size;
 import org.opencv.imgcodecs.Imgcodecs;
 import org.opencv.imgproc.Imgproc;
+import org.opencv.imgproc.Moments;
 
 import com.sun.javafx.scene.traversal.Hueristic2D;
 
@@ -30,7 +33,7 @@ import javafx.scene.paint.ImagePattern;
 public class visionUtils {
 	
 	static{
-		//new LibraryLoader();
+		new LibraryLoader();
 		System.loadLibrary(Core.NATIVE_LIBRARY_NAME);
 		}
 	
@@ -45,8 +48,8 @@ public class visionUtils {
 	public void readImage() {
 		
 		//OPEN IMAGE
-		//originalImg = Imgcodecs.imread("D:\\workspace\\OCVImageSegmentation\\res\\sudoku.jpg");
-		originalImg = Imgcodecs.imread("E:\\JAVA Projects\\OpenCv\\OCVImageSegmentation\\res\\sudoku.jpg");
+		originalImg = Imgcodecs.imread("D:\\workspace\\OCVImageSegmentation\\res\\sudoku.jpg");
+		//originalImg = Imgcodecs.imread("E:\\JAVA Projects\\OpenCv\\OCVImageSegmentation\\res\\sudoku.jpg");
 		//COPY AS A GRAYSCALE IMAGE FOR FURHTER PROCESSING
 		Mat gray = new Mat();
 		if(originalImg.empty()) {
@@ -61,7 +64,8 @@ public class visionUtils {
 			//contoursSegmentation(gray);
 			//test(gray);
 			List<MatOfPoint> biggestContour = biggestContourSegmentation(gray);
-			findLines(biggestContour);
+			approximateContours(biggestContour);
+			//findLines(biggestContour);
 		}
 		
 		
@@ -127,39 +131,125 @@ public class visionUtils {
 	}
 	
 	//PERSPECTIVE TRANSFORMATION - finding points
-	public void unskewImage(Mat img){
-		Mat copyImage = new Mat();
-		originalImg.copyTo(copyImage);
-		
-		//gray = cv2.cvtColor(img,cv2.COLOR_BGR2GRAY)
-		//edges = cv2.Canny(gray,50,150,apertureSize = 3)
-		
-		Mat lines = new Mat();
-		//lines= cv2.HoughLines(dst, 1, math.pi/180.0, 100, np.array([]), 0, 0)
-		Imgproc.HoughLines(img, lines, 1, Math.PI/180.0, 100);
-		System.out.println(lines.dump());
-		double[] data;
-		double rho, theta;
-		Point pt1 = new Point();
-		Point pt2 = new Point();
-		double a, b;
-		double x0, y0;
-		for (int i = 0; i < lines.cols(); i++)
-		{
-		    rho = lines.get(i, 0)[0];
-		    theta = lines.get(i, 0)[1];
-		    a = Math.cos(theta);
-		    b = Math.sin(theta);
-		    x0 = a*rho;
-		    y0 = b*rho;
-		    pt1.x = Math.round(x0 + 1000*(-b));
-		    pt1.y = Math.round(y0 + 1000*a);
-		    pt2.x = Math.round(x0 - 1000*(-b));
-		    pt2.y = Math.round(y0 - 1000 *a);
-		    Imgproc.line(copyImage, pt1, pt2, new Scalar(0,255,0), 3);
-		    
+	public Mat unskewImage(List<MatOfPoint> contour){
+		//calculate the center of mass of our contour image using moments
+		Moments moment = Imgproc.moments(contour.get(0));
+        int x = (int) (moment.get_m10() / moment.get_m00());
+        int y = (int) (moment.get_m01() / moment.get_m00());
+        //Imgproc.circle(originalImg, new Point(x, y), 4, new Scalar(255,49,0,255));
+        
+        
+        //SORT POINTS FOR
+        Point[] sortedPoints = new Point[4];
+        Mat destImage = new Mat();
+        double[] data;
+        int count = 0;
+        for(int i=0; i<contour.get(0).rows(); i++){
+        	data = contour.get(0).get(i, 0);
+        	double datax = data[0];
+        	double datay = data[1];
+        	if(datax < x && datay < y){
+        		sortedPoints[0]=new Point(datax,datay);
+        		count++;
+        	}else if(datax > x && datay < y){
+        		sortedPoints[1]=new Point(datax,datay);
+        		count++;
+        	}else if (datax < x && datay > y){
+        		sortedPoints[2]=new Point(datax,datay);
+        		count++;
+        	}else if (datax > x && datay > y){
+        		sortedPoints[3]=new Point(datax,datay);
+        		count++;
+        	}
+        }
+        
+        
+				
+        
+        if (count==4) {
+        	MatOfPoint2f src = new MatOfPoint2f(
+        			sortedPoints[0],
+        			sortedPoints[1],
+        			sortedPoints[2],
+        			sortedPoints[3]);
+        	
+        	MatOfPoint2f dst = new MatOfPoint2f(
+        			new Point(0, 0),
+        			new Point(originalImg.width()-1,0),
+        			new Point(0,originalImg.height()-1),
+        			new Point(originalImg.width()-1,originalImg.height()-1)		
+    				);
+
+        	Mat warpMat = Imgproc.getPerspectiveTransform(src,dst);
+        	
+        	Imgproc.warpPerspective(originalImg, destImage, warpMat, originalImg.size());
+        	
+		}else{
+			System.out.println("ERROR sorting points");
 		}
 		
+        return destImage;
+/*		for(int i =0; i < contour.get(0).rows(); i++){
+			
+		}
+		Imgproc.getPerspectiveTransform(src, dst)*/
+		
+	}
+	
+	//approximating contours
+	public void approximateContours(List<MatOfPoint> contour){
+		MatOfPoint2f  contour2f = new MatOfPoint2f( contour.get(0).toArray() );
+		MatOfPoint2f  approxContour = new MatOfPoint2f();
+		double accuracy = 0.05 * Imgproc.arcLength(contour2f, true);
+		Imgproc.approxPolyDP(contour2f, approxContour, accuracy, true);
+		System.out.println(approxContour.dump());
+		
+		List<MatOfPoint> contoursToDraw = new ArrayList<>();
+		
+		contoursToDraw.add(new MatOfPoint(approxContour.toArray()));
+		
+		//Imgproc.drawContours(originalImg, contoursToDraw , -1, new Scalar(0,255,0));
+		Mat perspectiveImg = unskewImage(contoursToDraw);
+		if(!perspectiveImg.empty()){
+			detectNumbers(perspectiveImg);
+		}
+		//Imgcodecs.imwrite("E:\\gaussian2.jpg", originalImg);
+	}
+	
+	//Detect numbers
+	public void detectNumbers(Mat img){
+		int boxWidth = img.width()/9;
+		int boxHeight = img.height()/9;
+		Point pt1, pt2;
+		for (int i = 0; i < 9; i++) {
+			for (int j = 0; j < 9; j++) {
+				if(i!=8){
+					if(j!=8){
+						pt1 = new Point(j*boxWidth,i*boxHeight);
+						pt2 = new Point(j*boxWidth+boxWidth,i*boxHeight+boxHeight);
+						Imgproc.rectangle(img, pt1, pt2, new Scalar(0,255,0));
+					}else{
+						pt1 = new Point(j*boxWidth,i*boxHeight);
+						pt2 = new Point(j*boxWidth+((img.width()-1) - j*boxWidth),i*boxHeight+boxHeight);
+						Imgproc.rectangle(img, pt1, pt2, new Scalar(0,255,0));
+					}
+				}else{
+					if(j!=8){
+						pt1 = new Point(j*boxWidth,i*boxHeight);
+						pt2 = new Point(j*boxWidth+boxWidth,i*boxHeight+((img.height()-1) - i*boxHeight));
+						Imgproc.rectangle(img, pt1, pt2, new Scalar(0,255,0));
+					}else{
+						pt1 = new Point(j*boxWidth,i*boxHeight);
+						pt2 = new Point(j*boxWidth+((img.width()-1) - j*boxWidth),i*boxHeight+((img.height()-1) - i*boxHeight));
+						Imgproc.rectangle(img, pt1, pt2, new Scalar(0,255,0));
+					}
+				}
+
+			}
+			
+		}
+		
+		Imgcodecs.imwrite("E:\\gaussian2.jpg", img);
 	}
 	
 	//HOUGH LINES
@@ -198,7 +288,7 @@ public class visionUtils {
              Imgproc.line(originalImg, pt1, pt2, new Scalar(0,255,0), 3);
          }
 		
-		Imgcodecs.imwrite("K:\\gaussian2.jpg", originalImg);
+		Imgcodecs.imwrite("E:\\gaussian2.jpg", originalImg);
 	}
 
 	//HOUGH LINES TEST - OK
