@@ -42,7 +42,37 @@ public class visionUtils {
 	
 	private Mat kernel = new Mat(new Size(3,3), 0);
 	private Mat originalImg = new Mat();
+	private Mat returnImage = new Mat();
 	//Mat image = Imgcodecs.imread(getClass().getResource(''));
+	
+	//CONSTRUCTOR
+	public visionUtils() {
+		
+	}
+	
+	public visionUtils(Mat img) {
+		img.copyTo(originalImg);
+	}
+	
+	//###PROCESS IMAGE
+	public void processImage(){
+		Mat gray = new Mat();
+		if(originalImg.empty()) {
+			System.out.println("EMPTY IMAGE. CHECK FILE");
+		}else{
+			if(originalImg.channels()>1) {
+				Imgproc.cvtColor(originalImg, gray, Imgproc.COLOR_BGR2GRAY);
+			}else{
+				originalImg.copyTo(gray);
+			}
+			//CONTOURS
+			//contoursSegmentation(gray);
+			//test(gray);
+			List<MatOfPoint> biggestContour = biggestContourSegmentation(gray);
+			approximateContours(biggestContour);
+			//findLines(biggestContour);
+		}
+	}
 	
 	//### Grabbing the image
 	public void readImage() {
@@ -123,7 +153,8 @@ public class visionUtils {
 		//sortingContours(contours);
 		System.out.println("DONE");
 		//Imgcodecs.imwrite("E:\\gaussian3.jpg", originalImg);
-		Imgcodecs.imwrite("E:\\gaussian3.jpg", cropContour(contours.get(maxIndex), originalImg));
+		
+		//Imgcodecs.imwrite("E:\\gaussian3.jpg", cropContour(contours.get(maxIndex), originalImg));
 		List<MatOfPoint> bigContour = new ArrayList<>();
 		bigContour.add(contours.get(maxIndex));
 		
@@ -249,7 +280,9 @@ public class visionUtils {
 			
 		}
 		
-		Imgcodecs.imwrite("E:\\gaussian2.jpg", img);
+		returnImage = img;
+		//img.copyTo(returnImage);
+		//Imgcodecs.imwrite("E:\\gaussian2.jpg", img);
 	}
 	
 	//HOUGH LINES
@@ -473,5 +506,7 @@ public class visionUtils {
 		
 	}
 	
-
+	public Mat returnProcessedImage(){
+		return returnImage;
+	}
 }
