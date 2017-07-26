@@ -24,6 +24,9 @@ import org.opencv.core.Size;
 import org.opencv.imgcodecs.Imgcodecs;
 import org.opencv.imgproc.Imgproc;
 import org.opencv.imgproc.Moments;
+import org.opencv.ml.KNearest;
+import org.opencv.ml.Ml;
+import org.opencv.utils.Converters;
 
 import com.sun.javafx.scene.traversal.Hueristic2D;
 
@@ -79,6 +82,7 @@ public class visionUtils {
 		
 		//OPEN IMAGE
 		originalImg = Imgcodecs.imread("D:\\workspace\\OCVImageSegmentation\\res\\sudoku.jpg");
+		returnImage = originalImg;
 		//originalImg = Imgcodecs.imread("E:\\JAVA Projects\\OpenCv\\OCVImageSegmentation\\res\\sudoku.jpg");
 		//COPY AS A GRAYSCALE IMAGE FOR FURHTER PROCESSING
 		Mat gray = new Mat();
@@ -118,7 +122,7 @@ public class visionUtils {
 		
 		Imgproc.drawContours(originalImg, contours, -1, new Scalar(0,255,0),3);
 		System.out.println("DONE");
-		Imgcodecs.imwrite("E:\\gaussian3.jpg", originalImg);
+		//Imgcodecs.imwrite("E:\\gaussian3.jpg", originalImg);
 	}
 	
 	//FIND BIGGEST CONTOUR
@@ -242,13 +246,76 @@ public class visionUtils {
 		//Imgproc.drawContours(originalImg, contoursToDraw , -1, new Scalar(0,255,0));
 		Mat perspectiveImg = unskewImage(contoursToDraw);
 		if(!perspectiveImg.empty()){
+			Mat retPerspective = new Mat();
+			//Imgproc.cvtColor(perspectiveImg, retPerspective, Imgproc.COLOR_BGR2GRAY);
+			//Mat edges = new Mat();
+			//Imgproc.Canny(blurred, edges, 30, 150);
+			
+			//extract contours
+			//Imgproc.GaussianBlur(retPerspective, retPerspective, new Size(3,3), 6);
+			//Imgproc.Canny(retPerspective, retPerspective,30, 150);
+			//Imgproc.adaptiveThreshold(retPerspective, retPerspective, 255, Imgproc.ADAPTIVE_THRESH_MEAN_C, Imgproc.THRESH_BINARY, 7, 3);
+			//int erosion_size = 1;
+	       // int dilation_size = 1;
+	       // Mat element = Imgproc.getStructuringElement(Imgproc.MORPH_RECT, new  Size(2*erosion_size + 1, 2*erosion_size+1));
+	       // Mat element1 = Imgproc.getStructuringElement(Imgproc.MORPH_RECT, new  Size(2*dilation_size + 1, 2*dilation_size+1));
+	        
+	        //Imgproc.erode(retPerspective, retPerspective, element);
+	        //Imgproc.dilate(retPerspective, retPerspective, element1);
+
+			//returnImage = retPerspective;
+			//Imgcodecs.imwrite("E:\\gaussian2.jpg", returnImage);
 			detectNumbers(perspectiveImg);
 		}
-		//Imgcodecs.imwrite("E:\\gaussian2.jpg", originalImg);
 	}
 	
 	//Detect numbers
 	public void detectNumbers(Mat img){
+		
+		String trainDataPath = "D:\\workspace\\OCVDigitsRecognition\\res\\digits.png";
+		Mat trainDataImg = Imgcodecs.imread(trainDataPath, 0);
+		Mat digits = trainDataImg.clone();
+		Mat trainData = new Mat();
+		Mat testData = new Mat();
+		List<Integer> trainLabs = new ArrayList<Integer>();
+		List<Integer> testLabs = new ArrayList<Integer>();
+		int knnK = 4;
+		//10 digits everyone takes 5 row
+		for (int r = 0; r < 50; r++) {
+			//3 digits per row
+			for(int c=0; c< 100; c++) {
+				//crop out 1 digit
+				Mat num = digits.submat(new Rect(c*20,r*20,20,20));
+				//we need float data for knn
+				num.convertTo(num,  CvType.CV_32F);
+				//50/50 train/test split
+				if(c%2==0) {
+					//for opencv ml, each feature has to be a single row
+					trainData.push_back(num.reshape(1,1));
+					trainLabs.add(r/5);
+					 //it is an array containing 0 and 255 that creates pattern for the label and number given
+					//when testing we compare what we have found converted to such pattern to every pattern that we have saved.
+					//we compare the similarity as a % value and based on that pick up the most probable one
+				}else {
+					testData.push_back(num.reshape(1,1));
+					testLabs.add(r/5);
+				}
+				//add label corresponding to the data
+				
+			}
+			
+		}
+		
+		KNearest knn = KNearest.create();
+		//Converters provide easy conversion from ugly c++ types to pretty java types
+		knn.train(trainData, Ml.ROW_SAMPLE, Converters.vector_int_to_Mat(testLabs));
+		
+		//prepare mat for finding contours
+		Mat contourImg = new Mat();
+		Imgproc.cvtColor(img, contourImg, Imgproc.COLOR_BGR2GRAY);
+		Mat contoursMat = new Mat();
+		Imgproc.Canny(contourImg, contoursMat,30, 150);
+		
 		int boxWidth = img.width()/9;
 		int boxHeight = img.height()/9;
 		int index = 0;
@@ -273,24 +340,139 @@ public class visionUtils {
 					}
 				}
 				//Imgcodecs.imwrite("E:\\sudokuSubMat\\box"+index+".jpg", img.submat(new Rect(pt1,pt2)));
-				try {
+				
+				//extract sumbat that contain contour
+				Mat contourBoxMat = contoursMat.submat(new Rect(pt1,pt2));
+				Mat boxMat = contourImg.submat(new Rect(pt1,pt2));
+				//find contours in the mat
+				List<MatOfPoint> contours = new ArrayList<>();
+				Imgproc.findContours(contourBoxMat, contours, new Mat(), Imgproc.RETR_EXTERNAL, Imgproc.CHAIN_APPROX_SIMPLE);
+				//check if contour is ok
+				int minCountourWidth = (int)(contourBoxMat.cols()*0.22);
+				int minContourHeight = (int)(contourBoxMat.rows()*0.5);
+				Mat finalMat = new Mat();
+				Mat res = new Mat();
+				for(int k=0; k<contours.size(); k++){
+					Rect boundingRect = Imgproc.boundingRect(contours.get(k));
+					if(boundingRect.width>=minCountourWidth && boundingRect.height >=minContourHeight && boundingRect.width<(int)(contourBoxMat.cols()*0.7) && boundingRect.height <(int)(contourBoxMat.rows()*0.8)) {
+						//TO DO what to check
+						//Imgproc.rectangle(boxMat, new Point(boundingRect.x,boundingRect.y), new Point(boundingRect.x+boundingRect.width,boundingRect.y+boundingRect.height), new Scalar(0,0,255),2);
+						
+						
+						//Mat blurred = new Mat();
+						//Imgproc.GaussianBlur(boxMat, blurred, new Size(3,3), 0);
+						Mat roi = boxMat.submat(boundingRect).clone();
+						Imgproc.adaptiveThreshold(roi, roi, 255, Imgproc.ADAPTIVE_THRESH_MEAN_C, Imgproc.THRESH_BINARY_INV, 7, 5);
+						//Imgproc.threshold(roi, roi, 50, 255, Imgproc.THRESH_BINARY_INV);
+						Mat squared = makeSquare(roi);
+						finalMat = resizeToPixel(20, squared);
+						Mat arrayFinal = finalMat.clone();
+						arrayFinal.convertTo(arrayFinal,  CvType.CV_32F);
+						Mat dataToCheck = new Mat();
+						dataToCheck.push_back(arrayFinal.reshape(1,1));
+						
+						float p = knn.findNearest(dataToCheck, knnK, res);
+						System.out.println("Position: "+index+" accuracy "+p+" algorithm answer "+res.dump());
+					}
+				}
+				
+				
+				
+				int topBottom = (int)(0.05*boxMat.rows());
+				int rigthLeft = (int)(0.05*boxMat.cols());
+				Mat borderMat = new Mat();
+				Core.copyMakeBorder(boxMat, borderMat, topBottom, topBottom, rigthLeft, rigthLeft, Core.BORDER_ISOLATED, new Scalar(0,0,0));
+/*				try {
 					Thread.sleep(10);
+					
 				} catch (InterruptedException e) {
 					// TODO Auto-generated catch block
 					e.printStackTrace();
-				}
-				Imgproc.rectangle(img, pt1, pt2, new Scalar(0,255,0));
-				Imgproc.putText(img, index+"", new Point(pt1.x+boxWidth/2,pt1.y+boxHeight/2), Core.FONT_HERSHEY_SIMPLEX, 0.5, new Scalar(0,255,0));
+				}*/
+/*				if(finalMat.empty()){
+					Imgcodecs.imwrite("E:\\sudokuSubMat\\box"+index+".jpg", borderMat);
+				}else{
+					Imgcodecs.imwrite("E:\\sudokuSubMat\\box"+index+".jpg", finalMat);
+				}*/
+				
 				index++;
-				//Imgcodecs.imwrite("E:\\sudokuSubMat\\box"+index+".jpg", img.submat(new Rect(pt1,pt2)));
+				Imgproc.rectangle(img, pt1, pt2, new Scalar(0,255,0));
+				if(res.empty()){
+					Imgproc.putText(img, ".", new Point(pt1.x+boxWidth/2,pt1.y+boxHeight/2), Core.FONT_HERSHEY_SIMPLEX, 0.5, new Scalar(0,255,0));
+				}else{
+					Imgproc.putText(img, (int)res.get(0, 0)[0]+" ", new Point(pt1.x+boxWidth/2,pt1.y+boxHeight/2), Core.FONT_HERSHEY_SIMPLEX, 0.5, new Scalar(0,255,0));
+				}
+				//Imgproc.rectangle(img, pt1, pt2, new Scalar(0,255,0));
+				//Imgproc.putText(img, index+"", new Point(pt1.x+boxWidth/2,pt1.y+boxHeight/2), Core.FONT_HERSHEY_SIMPLEX, 0.5, new Scalar(0,255,0));
+				//(int)res.get(0, 0)[0]+" "
+				//returnImage = borderMat;
 			}
-			
+			returnImage = img;
+			Imgcodecs.imwrite("E:\\sudokuREcognition"+knnK+".jpg", returnImage);
 		}
 		
-		returnImage = img;
+		//returnImage = img;
 		//img.copyTo(returnImage);
 		//Imgcodecs.imwrite("E:\\gaussian2.jpg", img);
 	}
+	
+	//MAKE SQUARE MAT
+	public Mat makeSquare(Mat not_square){
+		Mat square = new Mat();
+		Scalar BLACK = new Scalar(0,0,0);
+		double height = not_square.size().height;
+		double width = not_square.size().width;
+		
+		if(height == width){
+			square = not_square.clone();
+			return square;
+		}else{
+			Mat doubleSize = new Mat();
+			//resize(not_square, doubleSize, new Size(2*width,2*height),Imgproc.INTER_CUBIC); 
+			Imgproc.resize(not_square, doubleSize, new Size(2*width,2*height), 0, 0, Imgproc.INTER_CUBIC);
+			height *= 2;
+			width *= 2;
+			Mat doubleSizeSquared = new Mat();
+			if(height>width){
+				//how much shall we add to make it a square
+				int padding = (int)((height-width)/2);
+				Core.copyMakeBorder(doubleSize, doubleSizeSquared, 0, 0, padding, padding, Core.BORDER_CONSTANT, BLACK);
+			}else{
+				//how much shall we add to make it a square
+				int padding = (int)((width-height)/2);
+				Core.copyMakeBorder(doubleSize, doubleSizeSquared, padding, padding, 0, 0, Core.BORDER_CONSTANT, BLACK);
+			}
+			
+			return doubleSizeSquared;
+		}
+	}
+	
+	//RESIZE MAT FOR CLASSIFIER
+		public Mat resizeToPixel(int dimensions, Mat image) {
+			int bufferPixel = 4;
+			dimensions = dimensions - 4;
+			Mat squared = image.clone();
+			float r = (float)(dimensions / squared.size().width);
+			Size dim = new Size(dimensions,(int)(squared.size().height*r));
+			Mat resized = new Mat();
+			Imgproc.resize(image, resized, dim, 0, 0, Imgproc.INTER_AREA);
+			
+			double heioght_r = resized.size().height;
+			double width_r = resized.size().width;
+			Scalar BLACK = new Scalar(0,0,0);
+			if(heioght_r>width_r){
+				Core.copyMakeBorder(resized, resized, 0, 0, 0, 1, Core.BORDER_CONSTANT, BLACK);
+			}else if (heioght_r<width_r){
+				Core.copyMakeBorder(resized, resized, 1, 0, 0, 0, Core.BORDER_CONSTANT, BLACK);
+			}
+			int p = 2;
+			Mat resizedImage = new Mat();
+			Core.copyMakeBorder(resized, resizedImage, p, p, p, p, Core.BORDER_CONSTANT, BLACK);
+			double height = resizedImage.size().height;
+			double width = resizedImage.size().width;
+			//System.out.println("HEIGHT: "+height+" WIDTH: "+width);
+			return resizedImage;
+		}
 	
 	//HOUGH LINES
 	public void findLines(List<MatOfPoint> contour) {
