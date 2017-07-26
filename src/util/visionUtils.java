@@ -31,6 +31,7 @@ import org.opencv.utils.Converters;
 import com.sun.javafx.scene.traversal.Hueristic2D;
 
 import javafx.scene.effect.GaussianBlur;
+import javafx.scene.layout.Border;
 import javafx.scene.paint.ImagePattern;
 
 public class visionUtils {
@@ -279,7 +280,7 @@ public class visionUtils {
 		Mat testData = new Mat();
 		List<Integer> trainLabs = new ArrayList<Integer>();
 		List<Integer> testLabs = new ArrayList<Integer>();
-		int knnK = 4;
+		int knnK = 3;
 		//10 digits everyone takes 5 row
 		for (int r = 0; r < 50; r++) {
 			//3 digits per row
@@ -297,8 +298,10 @@ public class visionUtils {
 					//when testing we compare what we have found converted to such pattern to every pattern that we have saved.
 					//we compare the similarity as a % value and based on that pick up the most probable one
 				}else {
-					testData.push_back(num.reshape(1,1));
-					testLabs.add(r/5);
+					//testData.push_back(num.reshape(1,1));
+					//testLabs.add(r/5);
+					trainData.push_back(num.reshape(1,1));
+					trainLabs.add(r/5);
 				}
 				//add label corresponding to the data
 				
@@ -308,13 +311,20 @@ public class visionUtils {
 		
 		KNearest knn = KNearest.create();
 		//Converters provide easy conversion from ugly c++ types to pretty java types
-		knn.train(trainData, Ml.ROW_SAMPLE, Converters.vector_int_to_Mat(testLabs));
+		knn.train(trainData, Ml.ROW_SAMPLE, Converters.vector_int_to_Mat(trainLabs));
 		
 		//prepare mat for finding contours
 		Mat contourImg = new Mat();
 		Imgproc.cvtColor(img, contourImg, Imgproc.COLOR_BGR2GRAY);
+		
+		returnImage = contourImg;
+		
 		Mat contoursMat = new Mat();
-		Imgproc.Canny(contourImg, contoursMat,30, 150);
+		Mat blurred = new Mat();
+		Imgproc.GaussianBlur(contourImg, blurred, new Size(5,5), 2); //??
+		Imgproc.Canny(blurred, contoursMat,30, 150,5,true); //???
+		
+		//returnImage = contoursMat;
 		
 		int boxWidth = img.width()/9;
 		int boxHeight = img.height()/9;
@@ -352,17 +362,26 @@ public class visionUtils {
 				int minContourHeight = (int)(contourBoxMat.rows()*0.5);
 				Mat finalMat = new Mat();
 				Mat res = new Mat();
+				Mat borderMat = new Mat();
 				for(int k=0; k<contours.size(); k++){
 					Rect boundingRect = Imgproc.boundingRect(contours.get(k));
-					if(boundingRect.width>=minCountourWidth && boundingRect.height >=minContourHeight && boundingRect.width<(int)(contourBoxMat.cols()*0.7) && boundingRect.height <(int)(contourBoxMat.rows()*0.8)) {
+					if(boundingRect.width>=minCountourWidth && boundingRect.height >=minContourHeight && boundingRect.width<(int)(contourBoxMat.cols()*0.70) && boundingRect.height <(int)(contourBoxMat.rows()*0.70)) {
 						//TO DO what to check
-						//Imgproc.rectangle(boxMat, new Point(boundingRect.x,boundingRect.y), new Point(boundingRect.x+boundingRect.width,boundingRect.y+boundingRect.height), new Scalar(0,0,255),2);
+						Imgproc.rectangle(borderMat, new Point(boundingRect.x,boundingRect.y), new Point(boundingRect.x+boundingRect.width,boundingRect.y+boundingRect.height), new Scalar(0,0,255),2);
 						
 						
 						//Mat blurred = new Mat();
 						//Imgproc.GaussianBlur(boxMat, blurred, new Size(3,3), 0);
 						Mat roi = boxMat.submat(boundingRect).clone();
 						Imgproc.adaptiveThreshold(roi, roi, 255, Imgproc.ADAPTIVE_THRESH_MEAN_C, Imgproc.THRESH_BINARY_INV, 7, 5);
+						
+						//int dilation_size = 1;
+						//int erosion_size = 1;
+						//Mat element1 = Imgproc.getStructuringElement(Imgproc.MORPH_RECT, new  Size(2*dilation_size + 1, 2*dilation_size+1));
+						//Mat element = Imgproc.getStructuringElement(Imgproc.MORPH_RECT, new  Size(2*erosion_size + 1, 2*erosion_size+1));
+						//Imgproc.erode(roi, roi, element);
+						//Imgproc.dilate(roi, roi, element1);
+						
 						//Imgproc.threshold(roi, roi, 50, 255, Imgproc.THRESH_BINARY_INV);
 						Mat squared = makeSquare(roi);
 						finalMat = resizeToPixel(20, squared);
@@ -380,7 +399,7 @@ public class visionUtils {
 				
 				int topBottom = (int)(0.05*boxMat.rows());
 				int rigthLeft = (int)(0.05*boxMat.cols());
-				Mat borderMat = new Mat();
+				
 				Core.copyMakeBorder(boxMat, borderMat, topBottom, topBottom, rigthLeft, rigthLeft, Core.BORDER_ISOLATED, new Scalar(0,0,0));
 /*				try {
 					Thread.sleep(10);
@@ -389,26 +408,26 @@ public class visionUtils {
 					// TODO Auto-generated catch block
 					e.printStackTrace();
 				}*/
-/*				if(finalMat.empty()){
+				if(finalMat.empty()){
 					Imgcodecs.imwrite("E:\\sudokuSubMat\\box"+index+".jpg", borderMat);
 				}else{
 					Imgcodecs.imwrite("E:\\sudokuSubMat\\box"+index+".jpg", finalMat);
-				}*/
+				}
 				
 				index++;
-				Imgproc.rectangle(img, pt1, pt2, new Scalar(0,255,0));
+				Imgproc.rectangle(returnImage, pt1, pt2, new Scalar(0,255,0));
 				if(res.empty()){
-					Imgproc.putText(img, ".", new Point(pt1.x+boxWidth/2,pt1.y+boxHeight/2), Core.FONT_HERSHEY_SIMPLEX, 0.5, new Scalar(0,255,0));
+					Imgproc.putText(returnImage, ".", new Point(pt1.x+boxWidth/4,pt1.y+boxHeight/2), Core.FONT_HERSHEY_SIMPLEX, 1, new Scalar(0,255,0));
 				}else{
-					Imgproc.putText(img, (int)res.get(0, 0)[0]+" ", new Point(pt1.x+boxWidth/2,pt1.y+boxHeight/2), Core.FONT_HERSHEY_SIMPLEX, 0.5, new Scalar(0,255,0));
+					Imgproc.putText(returnImage, (int)res.get(0, 0)[0]+" ", new Point(pt1.x+boxWidth/6,pt1.y+boxHeight/2), Core.FONT_HERSHEY_SIMPLEX, 1, new Scalar(0,255,0));
 				}
 				//Imgproc.rectangle(img, pt1, pt2, new Scalar(0,255,0));
 				//Imgproc.putText(img, index+"", new Point(pt1.x+boxWidth/2,pt1.y+boxHeight/2), Core.FONT_HERSHEY_SIMPLEX, 0.5, new Scalar(0,255,0));
 				//(int)res.get(0, 0)[0]+" "
 				//returnImage = borderMat;
 			}
-			returnImage = img;
-			Imgcodecs.imwrite("E:\\sudokuREcognition"+knnK+".jpg", returnImage);
+			//returnImage = contourImg;
+			//Imgcodecs.imwrite("E:\\sudokuREcognition"+knnK+".jpg", returnImage);
 		}
 		
 		//returnImage = img;
